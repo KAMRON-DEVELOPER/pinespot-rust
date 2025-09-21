@@ -6,7 +6,7 @@ pub mod services;
 pub mod utilities;
 
 // Crates bring to current scope
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
     Json,
@@ -28,7 +28,7 @@ use crate::{
         google_oauth::{GoogleOAuthClient, build_google_oauth_url},
         redis::Redis,
     },
-    utilities::config::Config,
+    utilities::{config::Config, tls::build_tls_config},
 };
 
 #[derive(Clone)]
@@ -79,14 +79,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_max_level(config.tracing_level)
         .init();
 
-    let database = Database::new(&config)
-        .await
-        .map_err(|e| panic!("{}", e.to_string()))
-        .unwrap();
-    let redis = Redis::new(&config)
-        .await
-        .map_err(|e| panic!("{}", e.to_string()))
-        .unwrap();
+    let tls_config = build_tls_config(&config)?;
+    let shared_tls_config = tls_config;
+    let database = Database::new(&config, shared_tls_config.clone()).await?;
+    let redis = Redis::new(&config, shared_tls_config.clone()).await?;
     let key = Key::from(config.key.as_ref().unwrap().as_bytes());
     let client = build_google_oauth_url(&config);
 

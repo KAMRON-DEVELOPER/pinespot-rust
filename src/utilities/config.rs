@@ -37,6 +37,7 @@ pub struct Config {
     pub google_oauth_client_secret: Option<String>,
     pub google_oauth_redirect_url: Option<String>,
     pub key: Option<String>,
+
     // S3
     pub s3_access_key_id: Option<String>,
     pub s3_secret_key: Option<String>,
@@ -51,6 +52,14 @@ pub struct Config {
 
     // EMAIL
     pub email_service_api_key: Option<String>,
+
+    // SSL/TLS
+    pub ca: Option<String>,
+    pub ca_path: Option<PathBuf>,
+    pub client_cert: Option<String>,
+    pub client_cert_path: Option<PathBuf>,
+    pub client_key: Option<String>,
+    pub client_key_path: Option<PathBuf>,
 }
 
 impl Config {
@@ -80,11 +89,23 @@ impl Config {
         let redis_username = get_env("REDIS_USERNAME", Some("default".into()));
         let redis_password = get_env("REDIS_PASSWORD", Some("password".to_string()));
 
-        let firebase_adminsdk = get_env("FIREBASE_ADMINSDK", None);
+        let firebase_adminsdk_path = base_dir.join("certs/firebase-adminsdk.json");
+        let firebase_adminsdk = get_secret_with_fallback(
+            "firebase-adminsdk.json",
+            Some("FIREBASE_ADMINSDK"),
+            &firebase_adminsdk_path,
+        )
+        .await;
 
         let gcp_project_id = get_env("GCP_PROJECT_ID", None);
         let gcs_bucket_name = get_env("GCS_BUCKET_NAME", None);
-        let gcp_credentials = get_env("GCP_CREDENTIALS", None);
+        let gcp_credentials_path = base_dir.join("certs/client/gcp-credentials.json");
+        let gcp_credentials = get_secret_with_fallback(
+            "gcp-credentials.json",
+            Some("GCP_CREDENTIALS"),
+            &gcp_credentials_path,
+        )
+        .await;
         let google_oauth_client_id = get_env("GOOGLE_OAUTH_CLIENT_ID", None);
         let google_oauth_client_secret = get_env("GOOGLE_OAUTH_CLIENT_SECRET", None);
         let google_oauth_redirect_url = get_env("GOOGLE_OAUTH_REDIRECT_URL", None);
@@ -100,6 +121,15 @@ impl Config {
         let refresh_token_expire_in_days = get_env("REFRESH_TOKEN_EXPIRE_IN_DAYS", Some(90));
         let email_service_api_key = get_env("EMAIL_SERVICE_API_KEY", None);
 
+        // TLS certs: Docker secrets → fallback path
+        let ca_path = base_dir.join("certs/ca/ca.pem");
+        let ca = get_secret_with_fallback("ca.pem", None, &ca_path).await;
+        let client_cert_path = base_dir.join("certs/client/client-cert.pem");
+        let client_cert =
+            get_secret_with_fallback("client-cert.pem", None, &client_cert_path).await;
+        let client_key_path = base_dir.join("certs/client/client-key.pem");
+        let client_key = get_secret_with_fallback("client-key.pem", None, &client_key_path).await;
+
         Config {
             debug,
             tracing_level,
@@ -110,11 +140,11 @@ impl Config {
             redis_username,
             redis_password,
             firebase_adminsdk,
-            firebase_adminsdk_path: None,
+            firebase_adminsdk_path: Some(firebase_adminsdk_path),
             gcp_project_id,
             gcs_bucket_name,
             gcp_credentials,
-            gcp_credentials_path: None,
+            gcp_credentials_path: Some(gcp_credentials_path),
             google_oauth_client_id,
             google_oauth_client_secret,
             google_oauth_redirect_url,
@@ -128,6 +158,12 @@ impl Config {
             access_token_expire_in_minute,
             refresh_token_expire_in_days,
             email_service_api_key,
+            ca_path: Some(ca_path),
+            ca,
+            client_cert_path: Some(client_cert_path),
+            client_cert,
+            client_key_path: Some(client_key_path),
+            client_key,
         }
     }
 }
@@ -142,6 +178,30 @@ fn find_project_root() -> Option<PathBuf> {
             return None;
         }
     }
+}
+
+async fn get_secret_with_fallback(
+    name: &str,
+    env_name: Option<&str>,
+    fallback: &PathBuf,
+) -> Option<String> {
+    let docker_secret = Path::new("/run/secrets").join(name);
+
+    if let Ok(content) = fs::read_to_string(&docker_secret).await {
+        return Some(content);
+    }
+
+    if let Ok(content) = fs::read_to_string(fallback).await {
+        return Some(content);
+    }
+
+    if let Some(env_key) = env_name {
+        if let Ok(val) = std::env::var(env_key) {
+            return Some(val);
+        }
+    }
+
+    None
 }
 
 pub fn get_env<T>(name: &str, fallback: Option<T>) -> Option<T>

@@ -57,11 +57,56 @@ pub enum AppError {
     ),
     #[error("{table} not found with this {value}")]
     NotFoundError { table: String, value: String },
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+    #[error("Invalid ca cert error")]
+    InvalidCaCertError(String),
+    #[error("Incompatible ca cert type error")]
+    IncompatibleCaCertTypeError(String),
+    #[error("Invalid client cert error")]
+    InvalidClientCertError(String),
+    #[error("Incompatible client cert type error")]
+    IncompatibleClientCertTypeError(String),
+    #[error("Invalid client key error")]
+    InvalidClientKeyError(String),
+    #[error("Incompatible client key type error")]
+    IncompatibleClientKeyTypeError(String),
+    #[error("Invalid PEM error")]
+    InvalidPemError(#[from] rustls::pki_types::pem::Error),
+    #[error("Rustls error")]
+    RustlsError(#[from] rustls::Error),
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, error_message) = match self {
+            Self::IoError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            Self::InvalidPemError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            Self::RustlsError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            Self::InvalidCaCertError(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Invalid ca cert error, {}", e),
+            ),
+            Self::IncompatibleCaCertTypeError(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!(" Incompatible ca cert type error, {}", e),
+            ),
+            Self::InvalidClientCertError(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Invalid client cert error, {}", e),
+            ),
+            Self::IncompatibleClientCertTypeError(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!(" Incompatible client cert type error, {}", e),
+            ),
+            Self::InvalidClientKeyError(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Invalid client key error, {}", e),
+            ),
+            Self::IncompatibleClientKeyTypeError(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!(" Incompatible client key type error, {}", e),
+            ),
             Self::JwtError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
             Self::DatabaseParsingError => (
                 StatusCode::INTERNAL_SERVER_ERROR,
