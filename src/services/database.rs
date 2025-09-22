@@ -37,7 +37,7 @@ impl Database {
         //     }
         // }
         if let Some(client_cert) = &config.client_cert {
-            options = options.ssl_client_cert_from_pem(client_cert.as_bytes().to_owned());
+            options = options.ssl_client_cert_from_pem(client_cert.as_bytes());
         }
         // if let Some(client_key_path) = &config.client_key_path {
         //     if client_key_path.exists() {
@@ -45,7 +45,7 @@ impl Database {
         //     }
         // }
         if let Some(client_key) = &config.client_key {
-            options = options.ssl_client_key_from_pem(client_key.as_bytes().to_owned());
+            options = options.ssl_client_key_from_pem(client_key.as_bytes());
         }
 
         let pool = PgPoolOptions::new()

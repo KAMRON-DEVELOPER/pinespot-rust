@@ -291,26 +291,25 @@ where
     }
 
     // 2. Fallback file path
-    if let Some(path) = fallback_path {
-        if path.exists() {
-            match fs::read_to_string(path).await {
-                Ok(content) => {
-                    if let Ok(parsed) = T::from_str(content.trim()) {
-                        return Some(parsed);
-                    }
+    if let Some(path) = fallback_path
+        && path.exists()
+    {
+        match fs::read_to_string(path).await {
+            Ok(content) => {
+                if let Ok(parsed) = T::from_str(content.trim()) {
+                    return Some(parsed);
                 }
-                Err(e) => warn!("Failed to read fallback file {}: {}", path.display(), e),
             }
+            Err(e) => warn!("Failed to read fallback file {}: {}", path.display(), e),
         }
     }
 
     // 3. Env var
-    if let Some(env_key) = env_name {
-        if let Ok(val) = std::env::var(env_key) {
-            if let Ok(parsed) = T::from_str(val.trim()) {
-                return Some(parsed);
-            }
-        }
+    if let Some(env_key) = env_name
+        && let Ok(val) = std::env::var(env_key)
+        && let Ok(parsed) = T::from_str(val.trim())
+    {
+        return Some(parsed);
     }
 
     // 4. Final fallback
