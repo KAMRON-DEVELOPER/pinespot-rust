@@ -4,16 +4,15 @@ use std::{
     str::FromStr,
 };
 
+use sqlx::postgres::PgSslMode;
 use tokio::fs;
-use tracing::Level;
+use tracing::{Level, warn};
 
 #[derive(Clone, Debug)]
 pub struct Config {
-    pub debug: bool,
-
-    pub tracing_level: Level,
-
     pub base_dir: PathBuf,
+    pub debug: bool,
+    pub tracing_level: Level,
 
     // DATABASE
     pub database_url: Option<String>,
@@ -60,75 +59,153 @@ pub struct Config {
     pub client_cert_path: Option<PathBuf>,
     pub client_key: Option<String>,
     pub client_key_path: Option<PathBuf>,
+    pub ssl_mode: Option<PgSslMode>,
 }
 
 impl Config {
     pub async fn init() -> Self {
         let base_dir = find_project_root().unwrap_or_else(|| PathBuf::from("."));
 
-        let tracing_level = match get_env("TRACING_LEVEL", Some("ERROR".to_string())) {
-            Some(level_string) => match level_string.as_str() {
-                "ERROR" => Level::ERROR,
-                "INFO" => Level::INFO,
-                "DEBUG" => Level::DEBUG,
-                "TRACE" => Level::TRACE,
-                _ => Level::ERROR,
-            },
-            None => Level::ERROR,
-        };
-        // ENV-like values: Docker secrets → env var
-        let debug = get_env("DEBUG", Some(false)).unwrap();
+        let debug = get_config_value("DEBUG", Some("DEBUG"), None, Some(false))
+            .await
+            .unwrap();
+        let tracing_level = get_config_value(
+            "TRACING_LEVEL",
+            Some("TRACING_LEVEL"),
+            None,
+            Some(Level::DEBUG),
+        )
+        .await
+        .unwrap();
 
-        let database_url = get_env(
+        let database_url = get_config_value(
             "DATABASE_URL",
+            Some("DATABASE_URL"),
+            None,
             Some("postgresql://postgres:password@localhost:5432/pinespot_db".to_string()),
-        );
+        )
+        .await;
 
-        let redis_host = get_env("REDIS_HOST", Some("localhost".to_string()));
-        let redis_port = get_env("REDIS_PORT", Some(6379));
-        let redis_username = get_env("REDIS_USERNAME", Some("default".into()));
-        let redis_password = get_env("REDIS_PASSWORD", Some("password".to_string()));
+        let redis_host = get_config_value(
+            "REDIS_HOST",
+            Some("REDIS_HOST"),
+            None,
+            Some("localhost".to_string()),
+        )
+        .await;
+        let redis_port = get_config_value("REDIS_PORT", None, None, Some(6379)).await;
+        let redis_username = get_config_value(
+            "REDIS_USERNAME",
+            Some("REDIS_USERNAME"),
+            None,
+            Some("default".into()),
+        )
+        .await;
+        let redis_password = get_config_value(
+            "REDIS_PASSWORD",
+            Some("REDIS_PASSWORD"),
+            None,
+            Some("password".to_string()),
+        )
+        .await;
 
         let firebase_adminsdk_path = base_dir.join("certs/firebase-adminsdk.json");
-        let firebase_adminsdk = get_secret_with_fallback(
+        let firebase_adminsdk = get_config_value(
             "firebase-adminsdk.json",
             Some("FIREBASE_ADMINSDK"),
-            &firebase_adminsdk_path,
+            Some(&firebase_adminsdk_path),
+            None,
         )
         .await;
 
-        let gcp_project_id = get_env("GCP_PROJECT_ID", None);
-        let gcs_bucket_name = get_env("GCS_BUCKET_NAME", None);
+        let gcp_project_id =
+            get_config_value("GCP_PROJECT_ID", Some("GCP_PROJECT_ID"), None, None).await;
+        let gcs_bucket_name =
+            get_config_value("GCS_BUCKET_NAME", Some("GCS_BUCKET_NAME"), None, None).await;
         let gcp_credentials_path = base_dir.join("certs/client/gcp-credentials.json");
-        let gcp_credentials = get_secret_with_fallback(
+        let gcp_credentials = get_config_value(
             "gcp-credentials.json",
             Some("GCP_CREDENTIALS"),
-            &gcp_credentials_path,
+            Some(&gcp_credentials_path),
+            None,
         )
         .await;
-        let google_oauth_client_id = get_env("GOOGLE_OAUTH_CLIENT_ID", None);
-        let google_oauth_client_secret = get_env("GOOGLE_OAUTH_CLIENT_SECRET", None);
-        let google_oauth_redirect_url = get_env("GOOGLE_OAUTH_REDIRECT_URL", None);
-        let key = get_env("KEY", None);
+        let google_oauth_client_id = get_config_value(
+            "GOOGLE_OAUTH_CLIENT_ID",
+            Some("GOOGLE_OAUTH_CLIENT_ID"),
+            None,
+            None,
+        )
+        .await;
+        let google_oauth_client_secret = get_config_value(
+            "GOOGLE_OAUTH_CLIENT_SECRET",
+            Some("GOOGLE_OAUTH_CLIENT_SECRET"),
+            None,
+            None,
+        )
+        .await;
+        let google_oauth_redirect_url = get_config_value(
+            "GOOGLE_OAUTH_REDIRECT_URL",
+            Some("GOOGLE_OAUTH_REDIRECT_URL"),
+            None,
+            None,
+        )
+        .await;
+        let key = get_config_value("KEY", Some("KEY"), None, None).await;
 
-        let s3_access_key_id = get_env("S3_ACCESS_KEY_ID", None);
-        let s3_secret_key = get_env("S3_SECRET_KEY", None);
-        let s3_endpoint = get_env("S3_ENDPOINT", None);
-        let s3_region = get_env("S3_REGION", None);
-        let s3_bucket_name = get_env("S3_BUCKET_NAME", None);
-        let secret_key = get_env("SECRET_KEY", None);
-        let access_token_expire_in_minute = get_env("ACCESS_TOKEN_EXPIRE_IN_MINUTE", Some(15));
-        let refresh_token_expire_in_days = get_env("REFRESH_TOKEN_EXPIRE_IN_DAYS", Some(90));
-        let email_service_api_key = get_env("EMAIL_SERVICE_API_KEY", None);
+        let s3_access_key_id =
+            get_config_value("S3_ACCESS_KEY_ID", Some("S3_ACCESS_KEY_ID"), None, None).await;
+        let s3_secret_key =
+            get_config_value("S3_SECRET_KEY", Some("S3_SECRET_KEY"), None, None).await;
+        let s3_endpoint = get_config_value("S3_ENDPOINT", Some("S3_ENDPOINT"), None, None).await;
+        let s3_region = get_config_value("S3_REGION", Some("S3_REGION"), None, None).await;
+        let s3_bucket_name =
+            get_config_value("S3_BUCKET_NAME", Some("S3_BUCKET_NAME"), None, None).await;
+        let secret_key = get_config_value("SECRET_KEY", Some("SECRET_KEY"), None, None).await;
+        let access_token_expire_in_minute = get_config_value(
+            "ACCESS_TOKEN_EXPIRE_IN_MINUTE",
+            Some("ACCESS_TOKEN_EXPIRE_IN_MINUTE"),
+            None,
+            Some(15),
+        )
+        .await;
+        let refresh_token_expire_in_days = get_config_value(
+            "REFRESH_TOKEN_EXPIRE_IN_DAYS",
+            Some("REFRESH_TOKEN_EXPIRE_IN_DAYS"),
+            None,
+            Some(90),
+        )
+        .await;
+        let email_service_api_key = get_config_value(
+            "EMAIL_SERVICE_API_KEY",
+            Some("EMAIL_SERVICE_API_KEY"),
+            None,
+            None,
+        )
+        .await;
 
         // TLS certs: Docker secrets → fallback path
         let ca_path = base_dir.join("certs/ca/ca.pem");
-        let ca = get_secret_with_fallback("ca.pem", None, &ca_path).await;
+        let ca = get_config_value("ca.pem", Some("CA"), Some(&ca_path), None).await;
         let client_cert_path = base_dir.join("certs/client/client-cert.pem");
-        let client_cert =
-            get_secret_with_fallback("client-cert.pem", None, &client_cert_path).await;
+        let client_cert = get_config_value(
+            "client-cert.pem",
+            Some("CLIENT_CERT"),
+            Some(&client_cert_path),
+            None,
+        )
+        .await;
         let client_key_path = base_dir.join("certs/client/client-key.pem");
-        let client_key = get_secret_with_fallback("client-key.pem", None, &client_key_path).await;
+        let client_key = get_config_value(
+            "client-key.pem",
+            Some("CLIENT_KEY"),
+            Some(&client_key_path),
+            None,
+        )
+        .await;
+
+        let ssl_mode =
+            get_config_value("ssl_mode", Some("SSL_MODE"), None, Some(PgSslMode::Disable)).await;
 
         Config {
             debug,
@@ -164,6 +241,7 @@ impl Config {
             client_cert,
             client_key_path: Some(client_key_path),
             client_key,
+            ssl_mode,
         }
     }
 }
@@ -180,36 +258,61 @@ fn find_project_root() -> Option<PathBuf> {
     }
 }
 
-async fn get_secret_with_fallback(
-    name: &str,
+/// Try to resolve config value from Docker secrets, file path, or env var.
+/// - `secret_name` → filename inside `/run/secrets/`
+/// - `env_name` → optional environment variable key
+/// - `fallback_path` → fallback file path (checked if exists)
+///
+/// Returns parsed `T` if found and successfully parsed.
+pub async fn get_config_value<T>(
+    secret_name: &str,
     env_name: Option<&str>,
-    fallback: &PathBuf,
-) -> Option<String> {
-    let docker_secret = Path::new("/run/secrets").join(name);
-
-    if let Ok(content) = fs::read_to_string(&docker_secret).await {
-        return Some(content);
-    }
-
-    if let Ok(content) = fs::read_to_string(fallback).await {
-        return Some(content);
-    }
-
-    if let Some(env_key) = env_name {
-        if let Ok(val) = std::env::var(env_key) {
-            return Some(val);
-        }
-    }
-
-    None
-}
-
-pub fn get_env<T>(name: &str, fallback: Option<T>) -> Option<T>
+    fallback_path: Option<&PathBuf>,
+    fallback: Option<T>,
+) -> Option<T>
 where
     T: FromStr,
 {
-    match std::env::var(name) {
-        Ok(val) => T::from_str(&val).ok(),
-        Err(_) => fallback,
+    // 1. Docker secrets
+    let docker_secret = Path::new("/run/secrets").join(secret_name);
+    if docker_secret.exists() {
+        match fs::read_to_string(&docker_secret).await {
+            Ok(content) => {
+                if let Ok(parsed) = T::from_str(content.trim()) {
+                    return Some(parsed);
+                }
+            }
+            Err(e) => warn!(
+                "Failed to read docker secret {}: {}",
+                docker_secret.display(),
+                e
+            ),
+        }
     }
+
+    // 2. Fallback file path
+    if let Some(path) = fallback_path {
+        if path.exists() {
+            match fs::read_to_string(path).await {
+                Ok(content) => {
+                    if let Ok(parsed) = T::from_str(content.trim()) {
+                        return Some(parsed);
+                    }
+                }
+                Err(e) => warn!("Failed to read fallback file {}: {}", path.display(), e),
+            }
+        }
+    }
+
+    // 3. Env var
+    if let Some(env_key) = env_name {
+        if let Ok(val) = std::env::var(env_key) {
+            if let Ok(parsed) = T::from_str(val.trim()) {
+                return Some(parsed);
+            }
+        }
+    }
+
+    // 4. Final fallback
+    fallback
 }

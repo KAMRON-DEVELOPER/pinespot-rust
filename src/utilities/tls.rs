@@ -42,7 +42,7 @@ pub fn build_tls_config(config: &Config) -> Result<Option<Arc<ClientConfig>>, Ap
 
             match read_one(&mut reader) {
                 Ok(Some(Item::X509Certificate(cert))) => {
-                    root_store.add(CertificateDer::from(cert));
+                    root_store.add(cert)?;
                 }
                 Ok(Some(_)) => {
                     return Err(AppError::IncompatibleCaCertTypeError(
@@ -73,7 +73,7 @@ pub fn build_tls_config(config: &Config) -> Result<Option<Arc<ClientConfig>>, Ap
 
             match read_one(&mut reader) {
                 Ok(Some(Item::X509Certificate(cert))) => {
-                    root_store.add(CertificateDer::from(cert));
+                    root_store.add(cert)?;
                 }
                 Ok(Some(_)) => {
                     return Err(AppError::IncompatibleCaCertTypeError(
@@ -109,7 +109,7 @@ pub fn build_tls_config(config: &Config) -> Result<Option<Arc<ClientConfig>>, Ap
             loop {
                 match read_one(&mut reader) {
                     Ok(Some(Item::X509Certificate(cert))) => {
-                        certs.push(CertificateDer::from(cert));
+                        certs.push(cert);
                     }
                     Ok(Some(_)) => {
                         return Err(AppError::IncompatibleCaCertTypeError(
@@ -141,7 +141,7 @@ pub fn build_tls_config(config: &Config) -> Result<Option<Arc<ClientConfig>>, Ap
             loop {
                 match read_one(&mut reader) {
                     Ok(Some(Item::X509Certificate(cert))) => {
-                        certs.push(CertificateDer::from(cert));
+                        certs.push(cert);
                     }
                     Ok(Some(_)) => {
                         return Err(AppError::IncompatibleCaCertTypeError(

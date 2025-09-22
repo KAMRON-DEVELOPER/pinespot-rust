@@ -1,12 +1,5 @@
-use std::sync::Arc;
-
-use redis::{
-    Client, ClientTlsConfig, ConnectionAddr, ConnectionInfo, RedisConnectionInfo,
-    aio::MultiplexedConnection,
-};
-use rustls::ClientConfig;
-
 use crate::utilities::{config::Config, errors::AppError};
+use redis::{Client, ClientTlsConfig, TlsCertificates, aio::MultiplexedConnection};
 
 #[derive(Clone)]
 pub struct Redis {
@@ -14,32 +7,26 @@ pub struct Redis {
 }
 
 impl Redis {
-    pub async fn new(
-        config: &Config,
-        tls_config: Option<Arc<ClientConfig>>,
-    ) -> Result<Self, AppError> {
-        // Create the Redis-specific TLS configuration
-        let client_tls_config = ClientTlsConfig {
+    pub async fn new(config: &Config) -> Result<Self, AppError> {
+        // Structure to hold mTLS client certificate and key binaries in PEM format
+        let client_tls = ClientTlsConfig {
             client_cert: config.client_cert.as_ref().unwrap().as_bytes().to_vec(),
             client_key: config.client_key.as_ref().unwrap().as_bytes().to_vec(),
         };
 
-        let connection_info = ConnectionInfo {
-            addr: ConnectionAddr::TcpTls {
-                host: config.redis_host.as_ref().unwrap().clone(),
-                port: *config.redis_port.as_ref().unwrap(),
-                insecure: false,
-                tls_params: client_tls_config,
-            },
-            redis: RedisConnectionInfo {
-                db: 0,
-                username: config.redis_username.clone(),
-                password: config.redis_password.clone(),
-                protocol: redis::ProtocolVersion::RESP3,
-            },
+        // Structure to hold TLS certificates
+        // * client_tls: binaries of clientkey and certificate within a ClientTlsConfig structure if mTLS is used
+        // * root_cert: binary CA certificate in PEM format if CA is not in local truststore
+        let tls_certs = TlsCertificates {
+            client_tls: Some(client_tls),
+            root_cert: None,
         };
 
-        let client = Client::open(connection_info)?;
+        let client = Client::build_with_tls("redis://host:port/db", tls_certs)?;
+
+        let connection_info = client.get_connection_info();
+        println!(">>> connection info: {connection_info:?}");
+        println!(">>> connection info: {connection_info:?}");
 
         let connection = client.get_multiplexed_tokio_connection().await?;
 

@@ -81,8 +81,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let tls_config = build_tls_config(&config)?;
     let shared_tls_config = tls_config;
-    let database = Database::new(&config, shared_tls_config.clone()).await?;
-    let redis = Redis::new(&config, shared_tls_config.clone()).await?;
+    let database = Database::new(&config).await?;
+    let redis = Redis::new(&config).await?;
     let key = Key::from(config.key.as_ref().unwrap().as_bytes());
     let client = build_google_oauth_url(&config);
 
