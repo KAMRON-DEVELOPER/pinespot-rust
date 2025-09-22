@@ -6,6 +6,7 @@ use std::{
 
 use sqlx::postgres::PgSslMode;
 use tokio::fs;
+use tower::util::Optional;
 use tracing::{Level, warn};
 
 #[derive(Clone, Debug)]
@@ -18,6 +19,7 @@ pub struct Config {
     pub database_url: Option<String>,
 
     // REDIS
+    pub redis_url: Option<String>,
     pub redis_host: Option<String>,
     pub redis_port: Option<u16>,
     pub redis_username: Option<String>,
@@ -82,10 +84,17 @@ impl Config {
             "DATABASE_URL",
             Some("DATABASE_URL"),
             None,
-            Some("postgresql://postgres:password@localhost:5432/pinespot_db".to_string()),
+            Some("postgresql://postgres:password@127.0.0.1:5432/pinespot_db".to_string()),
         )
         .await;
 
+        let redis_url = get_config_value(
+            "REDIS_URL",
+            Some("REDIS_URL"),
+            None,
+            Some("redis://127.0.0.1:6379/0".to_string()),
+        )
+        .await;
         let redis_host = get_config_value(
             "REDIS_HOST",
             Some("REDIS_HOST"),
@@ -212,6 +221,7 @@ impl Config {
             tracing_level,
             base_dir,
             database_url,
+            redis_url,
             redis_host,
             redis_port,
             redis_username,

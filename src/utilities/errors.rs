@@ -5,12 +5,16 @@ use serde_json::json;
 pub enum AppError {
     #[error("{0}")]
     JwtError(String),
+    #[error("Database url not set error")]
+    DatabaseUrlNotSetError,
     #[error("Database url parsing error")]
     DatabaseParsingError,
     #[error("Database connection error")]
     DatabaseConnectionError,
     #[error("Sqlx error: {0}")]
     SqlxError(#[from] sqlx::Error),
+    #[error("Redis url not set error")]
+    RedisUrlNotSetError,
     #[error("Redis error: {0}")]
     RedisError(#[from] redis::RedisError),
     #[error("Bcrypt error: {0}")]
@@ -108,6 +112,10 @@ impl IntoResponse for AppError {
                 format!(" Incompatible client key type error, {}", e),
             ),
             Self::JwtError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
+            Self::DatabaseUrlNotSetError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Database url not set error".to_string(),
+            ),
             Self::DatabaseParsingError => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Database url parsing error".to_string(),
@@ -117,6 +125,10 @@ impl IntoResponse for AppError {
                 "Database connection error".to_string(),
             ),
             Self::SqlxError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            Self::RedisUrlNotSetError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Redis url not set error".to_string(),
+            ),
             Self::RedisError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             Self::BcryptError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             Self::Request(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
