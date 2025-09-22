@@ -61,7 +61,7 @@ impl Redis {
 
         let connection_info = client.get_connection_info();
         println!(">>> connection info: {connection_info:?}");
-        println!(">>> connection info: {connection_info:?}");
+        debug!(">>> connection info: {connection_info:?}");
 
         let connection = client.get_multiplexed_tokio_connection().await?;
 
