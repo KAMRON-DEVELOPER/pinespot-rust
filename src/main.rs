@@ -7,10 +7,11 @@ pub mod utilities;
 
 // Crates bring to current scope
 use std::net::SocketAddr;
+use std::result::Result::Ok;
 
 use axum::{
     Json,
-    extract::{ConnectInfo, FromRef, MatchedPath, Request},
+    extract::{ConnectInfo, MatchedPath, Request},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -23,60 +24,32 @@ use tracing::info;
 
 use crate::{
     handlers::user_handlers::{google_oauth_callback_handler, google_oauth_handler, login_handler},
-    services::{
-        database::Database,
-        google_oauth::{GoogleOAuthClient, build_google_oauth_url},
-        redis::Redis,
-    },
-    utilities::config::Config,
+    services::{database::Database, google_oauth::build_google_oauth_url, redis::Redis},
+    utilities::{app_state::AppState, config::Config},
 };
-
-#[derive(Clone)]
-struct AppState {
-    database: Database,
-    redis: Redis,
-    config: Config,
-    key: Key,
-    client: GoogleOAuthClient,
-}
-
-impl FromRef<AppState> for Database {
-    fn from_ref(state: &AppState) -> Self {
-        state.database.clone()
-    }
-}
-
-impl FromRef<AppState> for Redis {
-    fn from_ref(state: &AppState) -> Self {
-        state.redis.clone()
-    }
-}
-
-impl FromRef<AppState> for Config {
-    fn from_ref(state: &AppState) -> Self {
-        state.config.clone()
-    }
-}
-
-impl FromRef<AppState> for Key {
-    fn from_ref(state: &AppState) -> Self {
-        state.key.clone()
-    }
-}
-
-impl FromRef<AppState> for GoogleOAuthClient {
-    fn from_ref(state: &AppState) -> Self {
-        state.client.clone()
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    dotenvy::dotenv().expect("Couldn't loads the .env file from the current directory or parents");
+    match dotenvy::dotenv() {
+        Ok(path) => {
+            info!("Loaded .env file from {}", path.display());
+        }
+        Err(dotenvy::Error::Io(ref err)) if err.kind() == std::io::ErrorKind::NotFound => {
+            tracing::warn!(".env file not found, continuing without it");
+        }
+        Err(e) => {
+            tracing::warn!("Couldn't load .env file: {}", e);
+        }
+    }
+
     let config = Config::init().await;
 
     tracing_subscriber::fmt()
         .with_max_level(config.tracing_level)
+        .with_target(true)
+        .with_file(true)
+        .with_line_number(true)
+        .with_thread_ids(false)
         .init();
 
     // let tls_config = build_tls_config(&config)?;
@@ -128,7 +101,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Run Axum server
     let addr = SocketAddr::from(([0, 0, 0, 0], 8001));
-    info!("Starting server on {}", addr);
+    info!("Starting server on {:#?}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(
