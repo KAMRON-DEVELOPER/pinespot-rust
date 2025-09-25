@@ -15,9 +15,9 @@ CREATE TABLE users (
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
-    phone_number VARCHAR(50) NOT NULL,
+    phone_number VARCHAR(50),
     password TEXT NOT NULL,
-    avatar_url TEXT,
+    picture TEXT,
     role user_role NOT NULL DEFAULT 'regular',
     status user_status NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -43,6 +43,16 @@ CREATE TABLE apartments (
     distance_to_hospital DOUBLE PRECISION,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+-- =====================
+-- APARTMENT PICTURES
+-- =====================
+CREATE TABLE apartment_pictures (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    apartment_id UUID NOT NULL REFERENCES apartments(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    is_primary BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 -- =====================
 -- ADDRESSES
@@ -85,3 +95,37 @@ CREATE TABLE favorites (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (user_id, listing_id)
 );
+-- =====================
+-- OAUTH USERS
+-- =====================
+CREATE TABLE oauth_users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    exp TIMESTAMPTZ NOT NULL,
+    iat TIMESTAMPTZ NOT NULL,
+    iss VARCHAR(255) NOT NULL,
+    sub VARCHAR(255) NOT NULL,
+    at_hash VARCHAR(255),
+    email VARCHAR(100),
+    family_name VARCHAR(100),
+    given_name VARCHAR(100),
+    name VARCHAR(100),
+    picture TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+-- =====================
+-- SESSIONS
+-- =====================
+CREATE TABLE sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    session_token TEXT NOT NULL UNIQUE,
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+-- Index to quickly find sessions by token
+CREATE INDEX idx_sessions_token ON sessions(session_token);
+-- Index for checking valid sessions per user
+CREATE INDEX idx_sessions_user_id_expires_at ON sessions(user_id, expires_at);

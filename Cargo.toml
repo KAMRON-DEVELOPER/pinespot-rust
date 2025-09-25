@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+# Primary crates
 # openssl = { version = "0.10", features = ["vendored"] }
 rustls = { version = "0.23.32", features = ["std", "log", "logging", "ring"] }
 anyhow = "1.0.100"
-axum = "0.8.4"
+axum = { version = "0.8.4", features = ["macros", "multipart", "ws"] }
 axum-core = "0.5.2"
 axum-extra = { version = "0.10.1", features = [
   "async-read-body",
@@ -30,7 +31,14 @@ jwt-simple = { version = "0.12.12", default-features = false, features = [
 lapin = "3.6.0"
 oauth2 = "5.0.0"
 rand = "0.9.2"
-redis = { version = "0.32.5", features = ["r2d2", "tokio-comp", "tokio-rustls-comp", "tls-rustls-insecure", "tokio-native-tls-comp", "uuid"] }
+redis = { version = "0.32.5", features = [
+  "r2d2",
+  "tokio-comp",
+  "tokio-rustls-comp",
+  "tls-rustls-insecure",
+  "tokio-native-tls-comp",
+  "uuid",
+] }
 regex = "1.11.2"
 reqwest = { version = "0.12.23", default-features = false, features = [
   "json",
@@ -41,8 +49,10 @@ serde_json = "1.0.145"
 sqlx = { version = "0.8.6", features = [
   "chrono",
   "derive",
+  "macros",
   "postgres",
   "runtime-tokio",
+  "tls-native-tls",
   "tls-rustls",
   "uuid",
 ] }
@@ -50,10 +60,19 @@ sqlx-core = "0.8.6"
 thiserror = "2.0.16"
 tokio = { version = "1.47.1", features = ["full"] }
 tower = "0.5.2"
-tower-http = { version = "0.6.6", features = ["trace"] }
+tower-http = { version = "0.6.6", features = ["cors", "trace"] }
 tracing = "0.1.41"
 tracing-subscriber = "0.3.20"
 uuid = { version = "1.18.1", features = ["serde", "v4"] }
 validator = { version = "0.20.0", features = ["derive"] }
 rustls-pemfile = "2.2.0"
 tokio-rustls = "0.26.3"
+openidconnect = "4.0.1"
+url = { version = "2.5.7", features = ["serde"] }
+cookie = "0.18.1"
+object_store = { version = "0.12.4", features = ["gcp", "aws"] }
+infer = "0.19.0"
+
+# Important secondary crates
+
+# Auxilliary crates

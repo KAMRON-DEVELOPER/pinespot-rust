@@ -1,7 +1,5 @@
 // Modules
-pub mod handlers;
-pub mod models;
-pub mod schemas;
+pub mod features;
 pub mod services;
 pub mod utilities;
 
@@ -10,21 +8,24 @@ use std::net::SocketAddr;
 use std::result::Result::Ok;
 
 use axum::{
-    Json,
     extract::{ConnectInfo, MatchedPath, Request},
-    http::StatusCode,
+    http::{HeaderValue, Method, StatusCode},
     response::IntoResponse,
-    routing::{get, post},
 };
 use axum_extra::extract::cookie::Key;
-use serde_json::{Value, json};
 use tokio::signal;
-use tower_http::trace::TraceLayer;
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::info;
 
 use crate::{
-    handlers::user_handlers::{google_oauth_callback_handler, google_oauth_handler, login_handler},
-    services::{database::Database, google_oauth::build_google_oauth_url, redis::Redis},
+    features::{listings, users},
+    services::{
+        database::Database,
+        google_oauth::build_google_oauth_client,
+        google_oauth_openidconnect::build_google_oauth_openidconnect_client,
+        redis::Redis,
+        s3::{build_gcs, build_s3},
+    },
     utilities::{app_state::AppState, config::Config},
 };
 
@@ -57,26 +58,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database = Database::new(&config).await?;
     let redis = Redis::new(&config).await?;
     let key = Key::from(config.key.as_ref().unwrap().as_bytes());
-    let client = build_google_oauth_url(&config);
+    let oauth_client = build_google_oauth_client(&config)?;
+    let oauth_openidconnect_client = build_google_oauth_openidconnect_client(&config).await?;
+    let http_client = reqwest::ClientBuilder::new()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()?;
+    let s3 = build_s3(&config)?;
+    let gcs = build_gcs(&config)?;
 
-    let state = AppState {
+    let app_state = AppState {
         database,
         redis,
         config,
         key,
-        client,
+        oauth_client,
+        oauth_openidconnect_client,
+        http_client,
+        s3,
+        gcs,
     };
+
+    let cors = CorsLayer::new()
+        .allow_origin("http://localhost:3000".parse::<HeaderValue>().unwrap())
+        .allow_methods([Method::GET, Method::POST]);
 
     // Build router
     let app = axum::Router::new()
-        .route("/", get(root))
-        .route("/api/v1/auth/login", post(login_handler))
-        .route("/api/v1/auth/google", get(google_oauth_handler))
-        .route(
-            "/api/v1/auth/google/callback",
-            get(google_oauth_callback_handler),
-        )
-        .fallback(handler_404)
+        .merge(listings::routes())
+        .merge(users::routes())
+        .fallback(not_found_handler)
         .layer(
             TraceLayer::new_for_http()
                 // Create our own span for the request and include the matched path. The matched
@@ -97,7 +107,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // logging of errors so disable that
                 .on_failure(()),
         )
-        .with_state(state);
+        .with_state(app_state);
 
     // Run Axum server
     let addr = SocketAddr::from(([0, 0, 0, 0], 8001));
@@ -115,11 +125,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn root() -> Json<Value> {
-    Json(json!({"message": "Hello, Axum! 🚀"}))
-}
-
-async fn handler_404(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> impl IntoResponse {
+async fn not_found_handler(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> impl IntoResponse {
     println!("Client with {} connected", addr);
     (StatusCode::NOT_FOUND, "nothing to see here")
 }

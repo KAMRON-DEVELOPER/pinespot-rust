@@ -1,9 +1,14 @@
 use crate::{
-    services::{database::Database, google_oauth::GoogleOAuthClient, redis::Redis},
+    services::{
+        database::Database, google_oauth::GoogleOAuthClient,
+        google_oauth_openidconnect::GoogleOAuthOpenIdConnectClient, redis::Redis,
+    },
     utilities::config::Config,
 };
 use axum::extract::FromRef;
 use axum_extra::extract::cookie::Key;
+use object_store::{aws::AmazonS3, gcp::GoogleCloudStorage};
+use reqwest::Client;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -11,7 +16,11 @@ pub struct AppState {
     pub redis: Redis,
     pub config: Config,
     pub key: Key,
-    pub client: GoogleOAuthClient,
+    pub oauth_client: GoogleOAuthClient,
+    pub oauth_openidconnect_client: GoogleOAuthOpenIdConnectClient,
+    pub http_client: Client,
+    pub s3: AmazonS3,
+    pub gcs: GoogleCloudStorage,
 }
 
 impl FromRef<AppState> for Database {
@@ -40,6 +49,27 @@ impl FromRef<AppState> for Key {
 
 impl FromRef<AppState> for GoogleOAuthClient {
     fn from_ref(state: &AppState) -> Self {
-        state.client.clone()
+        state.oauth_client.clone()
+    }
+}
+
+impl FromRef<AppState> for GoogleOAuthOpenIdConnectClient {
+    fn from_ref(state: &AppState) -> Self {
+        state.oauth_openidconnect_client.clone()
+    }
+}
+impl FromRef<AppState> for Client {
+    fn from_ref(state: &AppState) -> Self {
+        state.http_client.clone()
+    }
+}
+impl FromRef<AppState> for AmazonS3 {
+    fn from_ref(state: &AppState) -> Self {
+        state.s3.clone()
+    }
+}
+impl FromRef<AppState> for GoogleCloudStorage {
+    fn from_ref(state: &AppState) -> Self {
+        state.gcs.clone()
     }
 }

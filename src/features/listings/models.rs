@@ -1,53 +1,29 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
+use sqlx::{FromRow, Type};
 use uuid::Uuid;
 
-#[derive(sqlx::Type, Serialize, Deserialize, PartialEq, Eq, Debug)]
-#[sqlx(type_name = "user_role", rename_all = "lowercase")]
-pub enum UserRole {
-    Admin,
-    Regular,
-}
-
-#[derive(sqlx::Type, Serialize, Deserialize, PartialEq, Eq, Debug)]
-#[sqlx(type_name = "user_status", rename_all = "lowercase")]
-pub enum UserStatus {
-    Active,
-    Disactive,
-}
-
-#[derive(sqlx::Type, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Type, Deserialize, Serialize, PartialEq, Eq, Default, Debug)]
 #[sqlx(type_name = "apartment_condition", rename_all = "lowercase")]
+#[sqlx(default)]
 pub enum ApartmentCondition {
+    #[default]
     New,
     Repaired,
     Old,
 }
 
-#[derive(sqlx::Type, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Type, Deserialize, Serialize, PartialEq, Eq, Default, Debug)]
 #[sqlx(type_name = "sale_type", rename_all = "lowercase")]
+#[sqlx(default)]
 pub enum SaleType {
+    #[default]
     Buy,
     Rent,
 }
 
-#[derive(FromRow, Serialize, Deserialize, PartialEq, Eq, Debug)]
-pub struct User {
-    pub id: Uuid,
-    pub first_name: String,
-    pub last_name: String,
-    pub email: String,
-    pub phone_number: String,
-    pub password: String,
-    pub avatar_url: Option<String>,
-    pub role: UserRole,
-    pub status: UserStatus,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(FromRow, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(FromRow, Deserialize, Serialize, PartialEq, Default, Debug)]
+#[sqlx(default)]
 pub struct Listing {
     pub id: Uuid,
     pub apartment_id: Uuid,
@@ -59,7 +35,8 @@ pub struct Listing {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(FromRow, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(FromRow, Deserialize, Serialize, PartialEq, Default, Debug)]
+#[sqlx(default)]
 pub struct Apartment {
     pub id: Uuid,
     pub title: String,
@@ -79,7 +56,8 @@ pub struct Apartment {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(FromRow, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(FromRow, Deserialize, Serialize, PartialEq, Default, Debug)]
+#[sqlx(default)]
 pub struct Address {
     pub id: Uuid,
     pub apartment_id: Uuid,
@@ -95,7 +73,8 @@ pub struct Address {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(FromRow, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(FromRow, Deserialize, Serialize, PartialEq, Eq, Default, Debug)]
+#[sqlx(default)]
 pub struct Favorite {
     pub id: Uuid,
     pub user_id: Uuid,

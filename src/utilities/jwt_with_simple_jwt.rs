@@ -25,6 +25,6 @@ pub fn verify_token(config: Config, token: &str) -> Result<Uuid, AppError> {
     let key = HS256Key::from_bytes(config.secret_key.as_ref().unwrap().as_bytes());
     let verified_token = key
         .verify_token::<Uuid>(token, None)
-        .map_err(|_| AppError::InvalidAuthorizationToken)?;
+        .map_err(|_| AppError::InvalidAuthorizationTokenError)?;
     Ok(verified_token.custom)
 }

@@ -48,7 +48,7 @@ pub fn verify_token(config: Config, token: &str) -> Result<Claims, anyhow::Error
         &DecodingKey::from_secret(config.secret_key.as_ref().unwrap().as_bytes()),
         &Validation::default(),
     )
-    .map_err(|_| AppError::InvalidAuthorizationToken)?;
+    .map_err(|_| AppError::InvalidAuthorizationTokenError)?;
     Ok(token_data.claims)
 }
 
@@ -62,11 +62,11 @@ where
         let TypedHeader(Authorization(bearer)) = parts
             .extract::<TypedHeader<Authorization<Bearer>>>()
             .await
-            .map_err(|_| AppError::MissingAuthorizationToken)?;
+            .map_err(|_| AppError::MissingAuthorizationTokenError)?;
         let config = Config::from_ref(state);
         let decoding_key = DecodingKey::from_secret(config.secret_key.as_ref().unwrap().as_bytes());
         let token_data = decode::<Claims>(bearer.token(), &decoding_key, &Validation::default())
-            .map_err(|_| AppError::InvalidAuthorizationToken)?;
+            .map_err(|_| AppError::InvalidAuthorizationTokenError)?;
         Ok(token_data.claims)
     }
 }
