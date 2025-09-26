@@ -21,6 +21,8 @@ pub fn build_gcs(config: &Config) -> Result<GoogleCloudStorage, AppError> {
 
         return Ok(GoogleCloudStorageBuilder::new()
             .with_service_account_path(service_account_path)
+            .with_bucket_name(config.s3_bucket_name.clone().unwrap())
+            // .with_url(format!("gs://{}", config.s3_bucket_name.clone().unwrap()))
             .build()?);
     }
 

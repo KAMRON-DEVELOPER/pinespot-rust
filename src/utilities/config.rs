@@ -131,7 +131,7 @@ impl Config {
             get_config_value("GCP_PROJECT_ID", Some("GCP_PROJECT_ID"), None, None).await;
         let gcs_bucket_name =
             get_config_value("GCS_BUCKET_NAME", Some("GCS_BUCKET_NAME"), None, None).await;
-        let gcp_credentials_path = base_dir.join("certs/client/gcp-credentials.json");
+        let gcp_credentials_path = base_dir.join("certs/gcp-credentials.json");
         let gcp_credentials = get_config_value(
             "gcp-credentials.json",
             Some("GCP_CREDENTIALS"),
