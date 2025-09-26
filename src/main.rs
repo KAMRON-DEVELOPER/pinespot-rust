@@ -14,7 +14,10 @@ use axum::{
 };
 use axum_extra::extract::cookie::Key;
 use tokio::signal;
-use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tower_http::{
+    cors::{Any, CorsLayer},
+    trace::TraceLayer,
+};
 use tracing::info;
 
 use crate::{
@@ -79,8 +82,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let cors = CorsLayer::new()
-        .allow_origin("http://localhost:3000".parse::<HeaderValue>().unwrap())
-        .allow_methods([Method::GET, Method::POST]);
+        .allow_origin([
+            HeaderValue::from_str("http://127.0.0.1:3000").unwrap(),
+            HeaderValue::from_str("http://127.0.0.1:5173").unwrap(),
+            HeaderValue::from_str("https://pinespot.uz").unwrap(),
+        ])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers(Any);
 
     // Build router
     let app = axum::Router::new()
@@ -107,7 +121,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // logging of errors so disable that
                 .on_failure(()),
         )
-        .with_state(app_state);
+        .with_state(app_state)
+        .layer(cors);
 
     // Run Axum server
     let addr = SocketAddr::from(([0, 0, 0, 0], 8001));
