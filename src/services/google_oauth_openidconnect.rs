@@ -43,7 +43,7 @@ pub type GoogleOAuthOpenIdConnectClient = Client<
     EndpointMaybeSet,
 >;
 
-pub async fn build_google_oauth_openidconnect_client<'a>(
+pub async fn build_google_oauth_openidconnect_client(
     config: &Config,
 ) -> Result<GoogleOAuthOpenIdConnectClient, AppError> {
     let issuer_url = IssuerUrl::new("https://accounts.google.com".to_string())?;

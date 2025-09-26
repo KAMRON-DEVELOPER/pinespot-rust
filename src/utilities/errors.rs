@@ -103,8 +103,8 @@ pub enum AppError {
             oauth2::StandardErrorResponse<oauth2::basic::BasicErrorResponseType>,
         >,
     ),
-    #[error("{table} not found with this {value}")]
-    NotFoundError { table: String, value: String },
+    #[error("{0}")]
+    NotFoundError(String),
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
     #[error("Invalid ca cert error")]
@@ -297,10 +297,7 @@ impl IntoResponse for AppError {
             Self::ValidatorValidationError(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
             Self::ValidatorValidationErrors(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
             Self::RequestTokenError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
-            Self::NotFoundError { table, value } => (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                format!("{table} not found with this {value}"),
-            ),
+            Self::NotFoundError(e) => (StatusCode::UNPROCESSABLE_ENTITY, e),
             Self::InvalidImageFormatError(e) => (StatusCode::UNPROCESSABLE_ENTITY, e),
         };
 

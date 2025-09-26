@@ -52,6 +52,6 @@ pub struct OAuthUser {
     pub given_name: Option<String>,
     pub name: Option<String>,
     pub picture: Option<String>,
+    pub phone_number: Option<String>,
     pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
 }

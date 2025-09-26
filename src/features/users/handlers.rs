@@ -1,19 +1,21 @@
-use std::net::SocketAddr;
-
 use crate::{
     features::users::schemas::CompleteProfileSchema,
     services::google_oauth::GoogleOAuthClient,
     utilities::{
-        config::Config,
         errors::AppError,
-        jwt_with_jsonwebtoken::{Claims, create_token},
+        generate_session_token::generate_session_token,
         session::{OauthUserId, OptionalOauthUserId, Session},
     },
 };
+use bcrypt::{DEFAULT_COST, hash};
+use std::net::SocketAddr;
 
 use object_store::path::Path as ObjectStorePath;
 
-use cookie::time::{Duration, OffsetDateTime};
+use cookie::{
+    SameSite,
+    time::{Duration as CookieDuration, OffsetDateTime},
+};
 
 use axum::{
     Json,
@@ -26,15 +28,14 @@ use axum_extra::{
     extract::{PrivateCookieJar, cookie::Cookie},
     headers::UserAgent,
 };
-use chrono::{TimeZone, Utc};
+use chrono::{Duration, Utc};
 use oauth2::{
     AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, Scope, TokenResponse,
 };
 
-use object_store::{
-    ObjectStore, aws::AmazonS3, gcp::GoogleCloudStorage, multipart::MultipartStore,
-};
+use object_store::{ObjectStore, gcp::GoogleCloudStorage};
 use reqwest::Client;
+use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
@@ -58,12 +59,11 @@ pub async fn google_oauth_handler(
         )
         .fetch_optional(&database.pool)
         .await?
+            && exp <= Utc::now()
         {
-            if exp <= Utc::now() {
-                sqlx::query_scalar!(r#"DELETE FROM oauth_users WHERE id = $1"#, oauth_user_id)
-                    .execute(&database.pool)
-                    .await?;
-            }
+            sqlx::query_scalar!(r#"DELETE FROM oauth_users WHERE id = $1"#, oauth_user_id)
+                .execute(&database.pool)
+                .await?;
         }
 
         return Ok((jar, Redirect::to("/complete-profile")));
@@ -86,7 +86,10 @@ pub async fn google_oauth_handler(
     let mut pkce_verifier_cookie =
         Cookie::new("pkce_verifier", pkce_code_verifier.secret().to_string());
     pkce_verifier_cookie.set_http_only(true);
+    pkce_verifier_cookie.set_same_site(SameSite::None);
+    pkce_verifier_cookie.set_secure(false);
     let jar = jar.add(pkce_verifier_cookie);
+
     Ok((jar, Redirect::to(auth_url.as_ref())))
 }
 
@@ -118,7 +121,7 @@ pub async fn google_oauth_callback_handler(
         .send()
         .await?;
     let oauth_user = oauth_user_response.json::<OAuthUser>().await?;
-    println!("oauth user: {:?}", oauth_user);
+    debug!("oauth user: {:?}", oauth_user);
 
     let phone_number_response = http_client
         .get("https://people.googleapis.com/v1/people/me?personFields=phoneNumbers")
@@ -126,12 +129,18 @@ pub async fn google_oauth_callback_handler(
         .send()
         .await?;
     let phone_number = phone_number_response.json::<PhoneResponse>().await?;
-    println!("phone number: {:?}", phone_number);
+    debug!("phone number: {:?}", phone_number);
+
+    let phone_number = phone_number
+        .phone_numbers
+        .as_ref()
+        .and_then(|v| v.first())
+        .map(|p| &p.value);
 
     let oauth_user_id = sqlx::query_scalar!(
         r#"
-            INSERT INTO oauth_users (exp, iat, iss, sub, at_hash, email, family_name, given_name, name, picture)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            INSERT INTO oauth_users (exp, iat, iss, sub, at_hash, email, family_name, given_name, name, picture, phone_number)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING id
         "#,
         oauth_user.exp,
@@ -144,16 +153,18 @@ pub async fn google_oauth_callback_handler(
         oauth_user.given_name,
         oauth_user.name,
         oauth_user.picture,
+        phone_number
     )
     .fetch_one(&database.pool)
     .await?;
 
     let exp_chrono = oauth_user.exp;
-    let exp_offset: OffsetDateTime =
-        OffsetDateTime::from_unix_timestamp(exp_chrono.timestamp()).unwrap();
+    let exp_offset = OffsetDateTime::from_unix_timestamp(exp_chrono.timestamp()).unwrap();
 
     let mut oauth_user_id_cookie = Cookie::new("oauth_user_id", oauth_user_id.to_string());
     oauth_user_id_cookie.set_http_only(true);
+    oauth_user_id_cookie.set_same_site(SameSite::None);
+    oauth_user_id_cookie.set_secure(false);
     oauth_user_id_cookie.set_expires(exp_offset);
     let jar = jar.add(oauth_user_id_cookie);
 
@@ -188,9 +199,8 @@ pub async fn get_oauth_user(
 pub async fn complete_profile_handler(
     jar: PrivateCookieJar,
     OauthUserId(oauth_user_id): OauthUserId,
-    State(config): State<Config>,
     State(gcs): State<GoogleCloudStorage>,
-    State(s3): State<AmazonS3>,
+    // State(s3): State<AmazonS3>,
     State(database): State<Database>,
     TypedHeader(user_agent): TypedHeader<UserAgent>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -222,6 +232,7 @@ pub async fn complete_profile_handler(
         family_name: None,
         email: None,
         password: None,
+        phone_number: None,
         picture: None,
     };
 
@@ -241,6 +252,9 @@ pub async fn complete_profile_handler(
             "password" => {
                 complete_profile_schema.password = Some(field.text().await.unwrap());
             }
+            "phone_number" => {
+                complete_profile_schema.phone_number = Some(field.text().await.unwrap());
+            }
             "picture" => {
                 let data = field.bytes().await.unwrap();
                 let pic_id = Uuid::new_v4();
@@ -258,7 +272,10 @@ pub async fn complete_profile_handler(
         }
     }
 
-    format!("complete_profile_schema: {:?}", complete_profile_schema);
+    debug!("complete_profile_schema: {:#?}", complete_profile_schema);
+
+    let picture = complete_profile_schema.picture.map(|p| p.to_string());
+    let hash_password = hash(complete_profile_schema.password.unwrap(), DEFAULT_COST)?;
 
     let user = sqlx::query_as!(
         User,
@@ -281,40 +298,103 @@ pub async fn complete_profile_handler(
         complete_profile_schema.given_name.unwrap(),
         complete_profile_schema.family_name.unwrap(),
         complete_profile_schema.email.unwrap(),
-        "phone_number".to_string(),
-        complete_profile_schema.password.unwrap(),
-        complete_profile_schema.picture.unwrap().to_string()
+        complete_profile_schema.phone_number,
+        hash_password,
+        picture
     )
     .fetch_one(&database.pool)
     .await?;
 
-    // set cookies
-    let mut access_cookie = Cookie::new("access_token", "access_token".to_string());
-    access_cookie.set_http_only(true);
-    access_cookie.set_path("/");
+    let session_token = generate_session_token();
+    let expires_at = Utc::now() + Duration::days(1);
+    let user_agent = user_agent.to_string();
+    let ip_address = addr.ip().to_string();
 
-    let jar = jar.add(access_cookie);
+    sqlx::query!(
+        r#"
+        INSERT INTO sessions (user_id, session_token, ip_address, user_agent, expires_at)
+        VALUES ($1,$2,$3,$4,$5)
+        "#,
+        user.id,
+        session_token,
+        ip_address,
+        user_agent,
+        expires_at
+    )
+    .execute(&database.pool)
+    .await?;
+
+    let mut session_token_cookie = Cookie::new("session_token", session_token.to_string());
+    session_token_cookie.set_http_only(true);
+    session_token_cookie.set_same_site(SameSite::None);
+    session_token_cookie.set_secure(false);
+    session_token_cookie.set_max_age(Some(CookieDuration::weeks(52)));
+
+    let jar = jar.add(session_token_cookie);
     let jar = jar.remove(Cookie::from("oauth_user_id"));
     let jar = jar.remove(Cookie::from("pkce_verifier"));
 
-    Ok((jar, Redirect::to("/")))
+    Ok((jar, Json(user)))
 }
 
 pub async fn login_handler(
+    jar: PrivateCookieJar,
     State(database): State<Database>,
+    TypedHeader(user_agent): TypedHeader<UserAgent>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(login_schema): Json<LoginSchema>,
 ) -> Result<impl IntoResponse, AppError> {
+    debug!("login_schema is {:#?}", login_schema);
+
     let user = login_schema.verify(&database).await?.ok_or_else(|| {
-        AppError::JwtError("User not found with this username and password".to_string())
+        AppError::NotFoundError("User not found with this username and password".to_string())
     })?;
 
-    Ok(Json(user))
+    let session_token = generate_session_token();
+    let expires_at = Utc::now() + Duration::days(1);
+    let user_agent = user_agent.to_string();
+    let ip_address = addr.ip().to_string();
+
+    sqlx::query!(
+        r#"
+            DELETE FROM sessions where user_id = $1
+        "#,
+        user.id
+    )
+    .execute(&database.pool)
+    .await?;
+
+    sqlx::query!(
+        r#"
+            INSERT INTO sessions (user_id, session_token, ip_address, user_agent, expires_at)
+            VALUES ($1,$2,$3,$4,$5)
+        "#,
+        user.id,
+        session_token,
+        ip_address,
+        user_agent,
+        expires_at
+    )
+    .execute(&database.pool)
+    .await?;
+
+    let mut session_token_cookie = Cookie::new("session_token", session_token.to_string());
+    session_token_cookie.set_http_only(true);
+    session_token_cookie.set_same_site(SameSite::None);
+    session_token_cookie.set_secure(false);
+    session_token_cookie.set_max_age(Some(CookieDuration::weeks(52)));
+
+    let jar = jar.add(session_token_cookie);
+
+    Ok((jar, Json(user)))
 }
 
 pub async fn get_user_handler(
     session: Session,
     State(database): State<Database>,
 ) -> Result<impl IntoResponse, AppError> {
+    debug!("claims: {:#?}", session);
+
     let user = sqlx::query_as!(
         User,
         r#"
@@ -336,10 +416,7 @@ pub async fn get_user_handler(
     )
     .fetch_optional(&database.pool)
     .await?
-    .ok_or_else(|| AppError::NotFoundError {
-        table: "User".to_string(),
-        value: session.user_id.to_string(),
-    })?;
+    .ok_or_else(|| AppError::NotFoundError("User not found".to_string()))?;
 
     Ok(Json(user))
 }
@@ -347,20 +424,17 @@ pub async fn get_user_handler(
 pub async fn update_user_handler() {}
 
 pub async fn delete_user_handler(
+    session: Session,
     State(database): State<Database>,
-    claims: Claims,
 ) -> Result<impl IntoResponse, AppError> {
-    println!("claims: {:#?}", claims);
+    debug!("claims: {:#?}", session);
 
-    let query_result = sqlx::query!("DELETE FROM users WHERE id = $1 ", claims.sub)
+    let query_result = sqlx::query!("DELETE FROM users WHERE id = $1", session.user_id)
         .execute(&database.pool)
         .await?;
 
     match query_result.rows_affected() {
-        0 => Err(AppError::NotFoundError {
-            table: "User".to_string(),
-            value: claims.sub.to_string(),
-        }),
+        0 => Err(AppError::NotFoundError("User not found".to_string())),
         _ => Ok(StatusCode::NO_CONTENT),
     }
 }

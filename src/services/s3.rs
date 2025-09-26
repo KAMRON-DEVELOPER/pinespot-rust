@@ -14,14 +14,14 @@ pub fn build_s3(config: &Config) -> Result<AmazonS3, AppError> {
 }
 
 pub fn build_gcs(config: &Config) -> Result<GoogleCloudStorage, AppError> {
-    if let Some(binding) = config.gcp_credentials_path.clone() {
-        if binding.exists() {
-            let service_account_path = binding.to_str().unwrap();
+    if let Some(binding) = config.gcp_credentials_path.clone()
+        && binding.exists()
+    {
+        let service_account_path = binding.to_str().unwrap();
 
-            return Ok(GoogleCloudStorageBuilder::new()
-                .with_service_account_path(service_account_path)
-                .build()?);
-        }
+        return Ok(GoogleCloudStorageBuilder::new()
+            .with_service_account_path(service_account_path)
+            .build()?);
     }
 
     Err(AppError::MissingCredentials)

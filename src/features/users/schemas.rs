@@ -90,5 +90,6 @@ pub struct CompleteProfileSchema {
     pub family_name: Option<String>,
     pub given_name: Option<String>,
     pub password: Option<String>,
+    pub phone_number: Option<String>,
     pub picture: Option<ObjectStorePath>,
 }

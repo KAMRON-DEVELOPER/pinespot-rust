@@ -15,7 +15,7 @@ CREATE TABLE users (
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
-    phone_number VARCHAR(50),
+    phone_number VARCHAR(50) NOT NULL,
     password TEXT NOT NULL,
     picture TEXT,
     role user_role NOT NULL DEFAULT 'regular',
@@ -108,10 +108,10 @@ CREATE TABLE oauth_users (
     email VARCHAR(100),
     family_name VARCHAR(100),
     given_name VARCHAR(100),
+    phone_number VARCHAR(50),
     name VARCHAR(100),
     picture TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 -- =====================
 -- SESSIONS
